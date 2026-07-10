@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+
+# Data & caches — never commit (large, licensed)
+data/
+backend/data/
+*.sqlite
+.env
+.env.*
+
+# Trained model artifacts — published via CI, not git
+models/*/
+!models/.gitkeep
+
+# Node / Next.js
+node_modules/
+frontend/.next/
+frontend/out/
+frontend/next-env.d.ts
+*.tsbuildinfo
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
