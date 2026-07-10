@@ -138,7 +138,7 @@ RESULTS_SCHEMA: dict[str, pl.DataType] = {
 
 
 def slugify(text: str) -> str:
-    """"São Paulo" -> "sao_paulo"; stable across seasons."""
+    """ "São Paulo" -> "sao_paulo"; stable across seasons."""
     ascii_text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
     return "_".join("".join(c if c.isalnum() else " " for c in ascii_text).lower().split())
 
@@ -151,8 +151,9 @@ def _td_seconds(series: pd.Series) -> pd.Series:
     return series.dt.total_seconds()
 
 
-def convert_laps(laps: pd.DataFrame, session_id: str, season: int, rnd: int,
-                 track_id: str) -> pl.DataFrame:
+def convert_laps(
+    laps: pd.DataFrame, session_id: str, season: int, rnd: int, track_id: str
+) -> pl.DataFrame:
     """fastf1 Laps dataframe -> LAPS_SCHEMA polars frame."""
     out = pd.DataFrame(
         {
@@ -294,7 +295,7 @@ def pull_race(year: int, rnd: int, location: str, with_pole: bool = True) -> str
 def completed_races(year: int) -> list[tuple[int, str]]:
     """(round, location) for races that have already happened."""
     schedule = fastf1.get_event_schedule(year, include_testing=False)
-    now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+    now = dt.datetime.now(dt.UTC).replace(tzinfo=None)
     out = []
     for _, ev in schedule.iterrows():
         race_date = ev["Session5DateUtc"]
@@ -327,8 +328,9 @@ def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     parser = argparse.ArgumentParser(description="Pull historical F1 race data to parquet")
     current_year = dt.date.today().year
-    parser.add_argument("--seasons", type=int, nargs="*",
-                        default=list(range(config.FIRST_SEASON, current_year + 1)))
+    parser.add_argument(
+        "--seasons", type=int, nargs="*", default=list(range(config.FIRST_SEASON, current_year + 1))
+    )
     parser.add_argument("--consolidate-only", action="store_true")
     args = parser.parse_args()
 

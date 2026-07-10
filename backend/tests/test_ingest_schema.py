@@ -30,8 +30,18 @@ def test_session_id():
 def test_laps_schema(race, request):
     laps: pl.DataFrame = request.getfixturevalue(race)["laps"]
     assert dict(laps.schema) == LAPS_SCHEMA
-    key_cols = ["session_id", "season", "round", "track_id", "driver_number",
-                "driver_code", "team_id", "lap_number", "pit_in", "pit_out"]
+    key_cols = [
+        "session_id",
+        "season",
+        "round",
+        "track_id",
+        "driver_number",
+        "driver_code",
+        "team_id",
+        "lap_number",
+        "pit_in",
+        "pit_out",
+    ]
     for col in key_cols:
         assert laps[col].null_count() == 0, f"{col} has nulls"
 
