@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+/* Midnight pit wall tokens — see frontend spec in the brief */
+:root {
+  --bg: #0a0a0f;
+  --surface: #12121a;
+  --raised: #1a1a24;
+  --hairline: #26262e;
+  --text: #e8e8ec;
+  --muted: #8b8b98;
+  --race-red: #e10600;
+  --compound-soft: #f0453f;
+  --compound-medium: #f7c325;
+  --compound-hard: #e8e8ec;
+  --compound-inter: #3dbe5b;
+  --compound-wet: #2e8be0;
+  --fastest-lap: #a855f7;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-hairline: var(--hairline);
+  --color-fg: var(--text);
+  --color-muted: var(--muted);
+  --color-race-red: var(--race-red);
+  --color-soft: var(--compound-soft);
+  --color-medium: var(--compound-medium);
+  --color-hard: var(--compound-hard);
+  --color-inter: var(--compound-inter);
+  --color-wet: var(--compound-wet);
+  --color-fastest: var(--fastest-lap);
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+}
