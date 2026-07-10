@@ -21,6 +21,29 @@ LAP_CLASSES = ("green", "sc", "vsc", "yellow", "red", "in", "out", "lap1")
 _RED, _SC, _VSC_CODES, _YELLOW_CODES = "5", "4", ("6", "7"), ("2", "3")
 
 
+def classify_lap_scalar(
+    lap_number: int, pit_in: bool, pit_out: bool, track_status: str | None
+) -> str:
+    """Scalar twin of classify_laps for the live/replay event path.
+    tests/test_classifier.py asserts the two stay in lockstep."""
+    if lap_number == 1:
+        return "lap1"
+    if pit_in:
+        return "in"
+    if pit_out:
+        return "out"
+    status = track_status or "1"
+    if _RED in status:
+        return "red"
+    if _SC in status:
+        return "sc"
+    if any(c in status for c in _VSC_CODES):
+        return "vsc"
+    if any(c in status for c in _YELLOW_CODES):
+        return "yellow"
+    return "green"
+
+
 def classify_laps(laps: pl.DataFrame) -> pl.DataFrame:
     """Add a ``lap_class`` column.
 

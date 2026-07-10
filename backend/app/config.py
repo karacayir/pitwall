@@ -96,6 +96,7 @@ FORECAST_AHEAD_LAPS = 15  # counterfactual curves 1..15 laps ahead
 
 # --- Forecast / live behaviour --------------------------------------------------------
 RAIN_PROB_WIDEN_THRESHOLD = 0.3  # widen quantiles when rain_prob_15m exceeds this
+RAIN_WIDEN_FACTOR = 1.5  # multiply P10-P90 half-widths under rain risk
 WS_STALENESS_S = 15.0
 
 DRY_COMPOUNDS = ("SOFT", "MEDIUM", "HARD")

@@ -2,17 +2,14 @@
 acceptance gate — monotonicity in tyre_age on a real (fixture-trained) model,
 via the full save/load artifact round-trip."""
 
-import json
-
 import numpy as np
 import polars as pl
 import pytest
 
 from app import config
-from features.build import FEATURE_COLUMNS, TARGET_COLUMN, training_mask
+from features.build import FEATURE_COLUMNS, TARGET_COLUMN
 from models.degradation import DegradationCurve, fit_curve
-from models.predict import OnlineBias, PaceModel, counterfactual_frame
-from models.train import build_training_frame, train_quantile_models
+from models.predict import OnlineBias, counterfactual_frame
 
 # --- online bias -------------------------------------------------------------
 
@@ -74,50 +71,6 @@ def test_c2_never_negative():
 
 
 # --- trained model: monotonicity + artifact round-trip ---------------------------
-
-
-@pytest.fixture(scope="module")
-def tiny_model(monza, sao_paulo, tmp_path_factory):
-    """Train a small but real quantile model on the two fixture races and
-    round-trip it through the artifact format."""
-    sessions = pl.DataFrame(
-        [
-            {"session_id": monza["session_id"], "track_id": "monza",
-             "laps_total": 53, "pole_time_s": 78.79, "season": 2025, "round": 16},
-            {"session_id": sao_paulo["session_id"], "track_id": "sao_paulo",
-             "laps_total": 69, "pole_time_s": 84.0, "season": 2024, "round": 21},
-        ]
-    )  # fmt: skip
-    tracks = {
-        "monza": {"lap_length_km": 5.793, "abrasiveness": 3.0},
-        "sao_paulo": {"lap_length_km": 4.309, "abrasiveness": 3.0},
-    }
-    laps = pl.concat([monza["laps"], sao_paulo["laps"]])
-    weather = pl.concat([monza["weather"], sao_paulo["weather"]])
-    df = build_training_frame(laps, weather, sessions, tracks)
-    rows = df.filter(training_mask(df))
-    assert len(rows) > 800, "fixture training frame unexpectedly small"
-
-    valid = rows.filter(pl.col("session_id") == monza["session_id"])
-    boosters, info = train_quantile_models(rows, valid, current_season=2025, n_estimators=80)
-
-    out = tmp_path_factory.mktemp("artifact") / "20990101"
-    out.mkdir()
-    for alpha, booster in boosters.items():
-        booster.save_model(str(out / f"q{int(alpha * 100)}.txt"))
-    (out / "meta.json").write_text(
-        json.dumps(
-            {
-                "features": FEATURE_COLUMNS,
-                "categorical_features": ["compound", "track_id", "driver_id", "team_id"],
-                "quantiles": list(config.QUANTILES),
-                "vocab": info["vocab"],
-                "metrics": info["metrics"],
-            }
-        )
-    )
-    model = PaceModel.latest(out.parent)
-    return model, rows
 
 
 def test_monotone_in_tyre_age(tiny_model):
