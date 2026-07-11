@@ -86,32 +86,27 @@ def create_app(
     speed: float | None = None,
     model: PaceModel | None | str = "auto",
 ) -> FastAPI:
-    app = FastAPI(title="Pitwall", version="0.1")
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],  # personal project; tighten if it ever grows auth
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-
-    @app.on_event("startup")
-    async def startup() -> None:
-        the_model = model
-        if the_model == "auto":
+    @contextlib.asynccontextmanager
+    async def lifespan(app: FastAPI):
+        the_model: PaceModel | None
+        if model == "auto":
             try:
                 the_model = PaceModel.latest()
                 log.info("loaded model %s", the_model.model_dir)
             except FileNotFoundError:
                 log.warning("no model artifacts — running without forecasts")
                 the_model = None
+        else:
+            the_model = model  # already a PaceModel or None
 
+        tasks = []
         if config.DATA_SOURCE == "live" and race_dir is None:
             from ingest.openf1 import OpenF1LiveClient
 
             runtime = SessionRuntime(engine=None, data_source="live")  # type: ignore[arg-type]
             app.state.runtime = runtime
             client = OpenF1LiveClient(runtime, the_model)
-            app.state.live_task = asyncio.create_task(client.run())
+            tasks.append(asyncio.create_task(client.run()))
         else:
             rd = race_dir or resolve_race(config.REPLAY_RACE)
             spd = config.REPLAY_SPEED if speed is None else speed
@@ -119,16 +114,22 @@ def create_app(
             engine = RaceEngine(meta, the_model)
             runtime = SessionRuntime(engine, "replay", replay_speed=spd)
             app.state.runtime = runtime
-            app.state.replay_task = asyncio.create_task(replay_task(runtime, rd, spd))
-
-    @app.on_event("shutdown")
-    async def shutdown() -> None:
-        for attr in ("replay_task", "live_task"):
-            task = getattr(app.state, attr, None)
-            if task:
+            tasks.append(asyncio.create_task(replay_task(runtime, rd, spd)))
+        try:
+            yield
+        finally:
+            for task in tasks:
                 task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await task
+
+    app = FastAPI(title="Pitwall", version="0.1", lifespan=lifespan)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # personal project; tighten if it ever grows auth
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     def runtime() -> SessionRuntime:
         rt = getattr(app.state, "runtime", None)
