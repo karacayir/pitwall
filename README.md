@@ -58,9 +58,11 @@ cd backend && uv run python scripts/ws_smoke.py --seconds 20
 
 - **Backend** (Fly.io, persistent process for MQTT):
   `fly deploy` (uses `fly.toml` + `backend/Dockerfile`).
-- **Frontend** (Cloudflare Pages): build with `@cloudflare/next-on-pages`, or any Node host
-  running `npm run start`. Set `NEXT_PUBLIC_API_BASE=https://<app>.fly.dev` and
-  `NEXT_PUBLIC_WS_URL=wss://<app>.fly.dev/ws/live`.
+- **Frontend** (Cloudflare Pages, static export): connect the repo in the Pages dashboard with
+  root directory `frontend`, build command `npm run build`, output directory `out`. Production
+  branch `main` deploys to `<project>.pages.dev`; every PR gets its own preview URL. Set
+  `NEXT_PUBLIC_API_BASE=https://<backend-host>` and `NEXT_PUBLIC_WS_URL=wss://<backend-host>/ws/live`
+  as Pages build env vars once a backend is deployed (they are baked in at build time).
 - **Weekly retrain**: `.github/workflows/retrain.yml` (Sundays 23:00 UTC) pulls the weekend's
   race, retrains, runs the backtest gate, and publishes the artifact only if clean-air MAE
   regressed by less than 5%.
