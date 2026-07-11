@@ -143,6 +143,21 @@ def slugify(text: str) -> str:
     return "_".join("".join(c if c.isalnum() else " " for c in ascii_text).lower().split())
 
 
+# fastf1 renamed event locations across seasons; canonicalise so one circuit
+# is one track_id for the model + priors (found by auditing 2019-2026 pulls)
+CANON_TRACKS = {
+    "monte_carlo": "monaco",
+    "miami_gardens": "miami",
+    "marina_bay": "singapore",
+    "al_daayen": "lusail",
+    "abu_dhabi": "yas_island",
+}
+
+
+def canon_track(slug: str) -> str:
+    return CANON_TRACKS.get(slug, slug)
+
+
 def make_session_id(season: int, rnd: int, location: str) -> str:
     return f"{season}_{rnd:02d}_{slugify(location)}"
 
@@ -265,7 +280,7 @@ def pull_race(year: int, rnd: int, location: str, with_pole: bool = True) -> str
         log.warning("%s has no laps, skipping", session_id)
         return None
 
-    track_id = slugify(location)
+    track_id = canon_track(slugify(location))
     race_dir.mkdir(parents=True, exist_ok=True)
 
     convert_laps(session.laps, session_id, year, rnd, track_id).write_parquet(
@@ -312,9 +327,13 @@ def consolidate() -> dict[str, int]:
         laps.append(pl.read_parquet(d / "laps.parquet"))
         weather.append(pl.read_parquet(d / "weather.parquet"))
         results.append(pl.read_parquet(d / "results.parquet"))
-        sessions.append(json.loads((d / "session.json").read_text()))
+        sess = json.loads((d / "session.json").read_text())
+        sess["track_id"] = canon_track(sess["track_id"])
+        sessions.append(sess)
 
-    pl.concat(laps).write_parquet(config.LAPS_PARQUET)
+    pl.concat(laps).with_columns(pl.col("track_id").replace(CANON_TRACKS)).write_parquet(
+        config.LAPS_PARQUET
+    )
     pl.concat(weather).write_parquet(config.WEATHER_PARQUET)
     pl.concat(results).write_parquet(config.DATA_DIR / "results.parquet")
     sessions_df = pl.from_dicts(sessions, schema=SESSIONS_SCHEMA).sort(["season", "round"])

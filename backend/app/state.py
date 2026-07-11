@@ -11,7 +11,7 @@ schemas.LapUpdate snapshot for the WebSocket/backtest to consume.
 """
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import polars as pl
@@ -59,6 +59,8 @@ class DriverState:
     last_lap_s: float | None = None
     lap_number: int = 0
     gap_ahead_s: float | None = None
+    last_time_s: float | None = None  # cumulative race clock at last crossing
+    compounds_used: set[str] = field(default_factory=set)
     pitted: bool = False  # pit_in seen on the most recent lap
     forecast: schemas.Forecast | None = None
     # (predicted_raw_p50_ratio, reference_used) for the next lap, for bias updates
@@ -188,6 +190,10 @@ class RaceEngine:
         d.last_lap_s = row.get("lap_time_s")
         d.lap_number = lap_number
         d.gap_ahead_s = gap
+        if t is not None:
+            d.last_time_s = float(t)
+        if d.compound:
+            d.compounds_used.add(d.compound)
         d.pitted = bool(row.get("pit_in"))
 
         # online bias: compare the arrived green lap against what we predicted
@@ -378,4 +384,71 @@ class RaceEngine:
                 )
                 for d in drivers
             ],
+        )
+
+    # --- simulator bridge -----------------------------------------------------------
+
+    def to_sim_setup(self, driver_number: int):
+        """Build a sim.montecarlo.SimSetup from the current live state."""
+        from sim.montecarlo import DEFAULT_SIGMA_HI, DEFAULT_SIGMA_LO, CarSim, SimSetup, TrackSim
+
+        chosen = self.drivers.get(driver_number)
+        if chosen is None or chosen.last_time_s is None:
+            raise ValueError(f"driver {driver_number} has no completed laps yet")
+
+        cars = []
+        for d in self.drivers.values():
+            if d.last_time_s is None or d.compound is None:
+                continue
+            if abs(d.last_time_s - chosen.last_time_s) > config.SIM_RIVAL_WINDOW_S and (
+                d.driver_number != driver_number
+            ):
+                continue
+            cars.append(
+                CarSim(
+                    driver_number=d.driver_number,
+                    t0=d.last_time_s,
+                    compound=d.compound,
+                    tyre_age=float((d.tyre_life or 1) - 1),
+                    bias_ratio=self.bias.get(d.driver_number),
+                    compounds_used=set(d.compounds_used),
+                )
+            )
+
+        ref_now = self._ref_history[-1] if self._ref_history else (self.meta.pole_time_s or 90.0)
+        ref_next = extrapolate_reference(self._ref_history or [ref_now], 1, rain=self.raining)
+        slope = ref_next - ref_now
+
+        # noise widths from the chosen driver's live forecast quantiles (ratio units)
+        sigma: dict[str, tuple[float, float]] = {}
+        fc = chosen.forecast
+        if fc:
+            z80 = 1.2816  # standard-normal z for the 90th percentile
+            if fc.current and chosen.compound:
+                lo = max(fc.current.p50 - fc.current.p10, 0.02) / z80 / ref_now
+                hi = max(fc.current.p90 - fc.current.p50, 0.02) / z80 / ref_now
+                sigma[chosen.compound] = (lo, hi)
+            for compound, q in fc.fresh.items():
+                lo = max(q.p50 - q.p10, 0.02) / z80 / ref_now
+                hi = max(q.p90 - q.p50, 0.02) / z80 / ref_now
+                sigma.setdefault(compound, (lo, hi))
+        for compound in config.ALL_COMPOUNDS:
+            sigma.setdefault(compound, (DEFAULT_SIGMA_LO, DEFAULT_SIGMA_HI))
+
+        self.degradation.refit()
+        return SimSetup(
+            cars=cars,
+            chosen=driver_number,
+            track=TrackSim(
+                laps_total=self.meta.laps_total,
+                pit_loss_s=self.meta.pit_loss_s,
+                sc_hazard_per_lap=self.meta.sc_hazard_per_lap,
+                overtake_difficulty=self.meta.overtake_difficulty,
+            ),
+            from_lap=min(chosen.lap_number + 1, self.meta.laps_total),
+            ref0=ref_now,
+            ref_slope=slope,
+            curves={c: self.degradation.curve(c) for c in config.ALL_COMPOUNDS},
+            sigma=sigma,
+            current_position=chosen.position,
         )

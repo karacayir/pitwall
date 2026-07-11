@@ -49,12 +49,15 @@ def resolve_race(race: str) -> Path:
 
 
 def load_session_meta(race_dir: Path, tracks: dict | None = None) -> SessionMeta:
+    from ingest.fastf1_pull import canon_track
+
     meta = json.loads((race_dir / "session.json").read_text())
     tracks = tracks or load_tracks()
-    track = tracks.get(meta["track_id"], {})
+    track_id = canon_track(meta["track_id"])
+    track = tracks.get(track_id, {})
     return SessionMeta(
         session_id=meta["session_id"],
-        track_id=meta["track_id"],
+        track_id=track_id,
         laps_total=meta["laps_total"],
         lap_length_km=track.get("lap_length_km", 5.0),
         abrasiveness=track.get("abrasiveness", 3.0),
