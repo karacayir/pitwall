@@ -323,7 +323,10 @@ class RaceEngine:
             f"{ix['kind']}/{ix.get('compound', '')}" for ix in index
         ]  # each scenario is an ascending-age sweep
         preds = self.model.predict_quantiles(frame, age_groups=groups)
-        preds = preds + self.bias.get(d.driver_number)
+        # NOTE: the brief adds the online bias to every quantile, but with the
+        # autoregressive features in the model that double-adapts and measurably
+        # hurt walk-forward MAE (+0.07s) and coverage (-8pts). The bias stays as
+        # the UI's "vs pre-race model" calibration readout and a sim input only.
         if self.raining:
             mid = preds[:, 1:2]
             preds = np.column_stack(
@@ -355,9 +358,8 @@ class RaceEngine:
                 ahead.setdefault("current", []).append(q.p50)
                 if k == 1:
                     forecast.current = q
-                    # raw model ratio (bias excluded) for the next bias update
-                    raw_p50 = float(preds[i, 1]) - self.bias.get(d.driver_number)
-                    d.pending = (raw_p50, ref_k)
+                    # raw model ratio for the next bias (readout) update
+                    d.pending = (float(preds[i, 1]), ref_k)
             else:
                 compound = ix["compound"]
                 ahead.setdefault(compound, []).append(q.p50)

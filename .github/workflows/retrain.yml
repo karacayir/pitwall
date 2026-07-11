@@ -1,0 +1,75 @@
+name: retrain
+
+# Sunday 23:00 UTC: pull the weekend's race, retrain, run the backtest gate,
+# and publish the artifact ONLY if clean-air MAE regressed < 5% vs the last
+# published run.
+
+on:
+  schedule:
+    - cron: "0 23 * * 0"
+  workflow_dispatch:
+
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - run: uv sync --frozen
+
+      - name: Restore FastF1 cache + raw parquet
+        uses: actions/cache@v4
+        with:
+          path: data
+          key: pitwall-data-${{ github.run_id }}
+          restore-keys: pitwall-data-
+
+      - name: Pull current season (resumable; rate-limited to 500 calls/h)
+        run: uv run python -m ingest.fastf1_pull --seasons $(date +%Y)
+
+      - name: Rebuild tracks.yaml
+        run: uv run python -m ingest.tracks_build
+
+      - name: Train
+        run: uv run python -m models.train | tee train_metrics.json
+
+      - name: Backtest gate (recent seasons, walk-forward)
+        id: gate
+        run: |
+          uv run python -m backtest.replay_eval --seasons $(date +%Y) --retrain-every 4 \
+            | tail -1 | tee backtest_metrics.json
+          MAE=$(python3 -c "import json;print(json.load(open('backtest_metrics.json'))['mae_clean_next'])")
+          echo "mae=$MAE" >> "$GITHUB_OUTPUT"
+
+      - name: Compare against last published MAE (<5% regression allowed)
+        run: |
+          PREV=$(cat ../models/.published_mae 2>/dev/null || echo "")
+          NEW="${{ steps.gate.outputs.mae }}"
+          python3 - <<EOF
+          prev = "${PREV}"
+          new = float("${NEW}")
+          if prev:
+              limit = float(prev) * 1.05
+              assert new <= limit, f"clean-air MAE regressed: {new:.3f} > {limit:.3f}"
+          print(f"gate ok: {new:.3f} (prev: {prev or 'none'})")
+          EOF
+          mkdir -p ../models && echo "$NEW" > ../models/.published_mae
+
+      - name: Publish artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pitwall-model-${{ github.run_id }}
+          path: |
+            models/
+            backend/train_metrics.json
+            backend/backtest_metrics.json
+          if-no-files-found: error

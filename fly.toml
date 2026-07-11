@@ -1,0 +1,29 @@
+# Fly.io app for the Pitwall backend (persistent process for MQTT/WebSocket).
+# Deploy: fly deploy --config fly.toml --dockerfile backend/Dockerfile
+app = "pitwall-backend"
+primary_region = "ams"
+
+[build]
+  dockerfile = "backend/Dockerfile"
+
+[env]
+  DATA_SOURCE = "live"
+  MODEL_DIR = "/models"
+  PITWALL_DATA_DIR = "/data"
+
+# OPENF1_USERNAME / OPENF1_PASSWORD -> `fly secrets set ...`
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = false   # MQTT needs the process alive
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"
+
+[mounts]
+  source = "pitwall_models"
+  destination = "/models"
