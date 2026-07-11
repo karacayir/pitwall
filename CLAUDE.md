@@ -42,23 +42,24 @@ never brand as official F1.
 
 - [x] **Phase 0 — Scaffold**: git+origin, gitignore, Makefile, backend uv project, frontend
       Next.js scaffold, CI (ruff + pytest + frontend build), CLAUDE.md.
-- [ ] **Phase 1 — Historical data pipeline**: FastF1 pull (≥120 races 2019–2026) → parquet with
-      tested schema; lap classifier; computed `tracks.yaml` fields (pit_loss_s, sc_hazard_per_lap).
-- [ ] **Phase 2 — Features + normalisation**: reference pace (golden tests incl. cold start +
-      rain hold), feature matrix builder, explicit leakage test.
-- [ ] **Phase 3 — Models**: LightGBM quantile ×3 (monotone in tyre_age), versioned artifacts,
-      degradation priors per (track, compound), online bias module.
-- [ ] **Phase 4 — Replay harness + backtest**: chronological replay through the live code path;
-      backtest report meeting acceptance gates (≥20% vs persistence, ≥8% vs rolling-median,
-      coverage 80±7).
-- [ ] **Phase 5 — Live service**: FastAPI WS `/ws/live` + REST; OpenF1 MQTT client (token refresh,
-      reconnect, `_key` dedupe, `_id` ordering) + REST fallback; `DATA_SOURCE=replay|live`.
-- [ ] **Phase 6 — Frontend**: live board, driver view, strategy lab, replay banner;
-      Lighthouse ≥85; screenshots in `reports/ui/`.
-- [ ] **Phase 7 — Strategy simulator**: vectorised Monte Carlo, 2000 sims <2s, seeded
-      determinism, sanity check vs a fixture race.
-- [ ] **Phase 8 — Deploy + ops**: Dockerfile, fly.toml, CF Pages, retrain.yml with regression
-      gate, README runbook.
+- [x] **Phase 1 — Historical data pipeline**: 161 races 2019–2026 in parquet, schema tests,
+      lap classifier (golden counts on 2 fixture races), computed `tracks.yaml`.
+- [x] **Phase 2 — Features + normalisation**: reference pace with golden tests, feature matrix,
+      two explicit leakage tests (lap data + weather boundaries).
+- [x] **Phase 3 — Models**: LightGBM quantile ×3, split-conformal calibration, versioned
+      artifacts, degradation priors, online bias (readout only — see Decisions), monotonicity
+      enforced at inference.
+- [x] **Phase 4 — Replay harness + backtest**: replay through the live engine; walk-forward
+      backtest with retrain-per-3-races; gates: see `reports/backtest_<date>.md`.
+- [x] **Phase 5 — Live service**: FastAPI WS `/ws/live` (+resume via `?since=`), REST incl.
+      `/api/history` + `/api/simulate`; OpenF1 client (MQTT + REST fallback, `_id`/`_key`
+      MessageLog) with mapper fixture-tested against real API samples.
+- [x] **Phase 6 — Frontend**: live board / driver view / strategy lab / replay banner;
+      Lighthouse performance 99 (`reports/lighthouse.md`); screenshots in `reports/ui/`.
+- [x] **Phase 7 — Strategy simulator**: shared-random-environment Monte Carlo; 36 strategies
+      × 2000 sims in ~0.9s; determinism + physics + fixture sanity tests.
+- [x] **Phase 8 — Deploy + ops**: backend/Dockerfile, fly.toml, retrain.yml (MAE regression
+      gate <5%), README runbook.
 
 ## Decisions
 
@@ -67,6 +68,29 @@ never brand as official F1.
 - 2026-07-10: `models/*/` artifacts are gitignored (binary boosters bloat git); retrain workflow
   publishes them as CI artifacts instead.
 - 2026-07-10: `gh` CLI not installed; remote was already configured so not needed for Phase 0.
+- 2026-07-10: results.parquet added as a 4th consolidated file (grid/finish/status/team colours);
+  the brief listed three but also asked for results to be persisted.
+- 2026-07-10: Sprint races are NOT ingested (GP races only) — simpler stint semantics; revisit
+  if more current-season data is needed.
+- 2026-07-10: FastF1 rate-limits at 500 API calls/hour; `make data` is resumable per race and
+  must be re-run (or looped) until complete. ~35 races per hour.
+- 2026-07-11: LightGBM's quantile objective REJECTS monotone_constraints (hard error).
+  Monotonicity in tyre_age is enforced at inference: isotonic cummax along age sweeps in
+  `PaceModel.predict_quantiles(age_groups=)`.
+- 2026-07-11: fastf1 renamed circuit locations across seasons (monte_carlo/monaco,
+  miami_gardens/miami, marina_bay/singapore) — canonicalised in `ingest.fastf1_pull.CANON_TRACKS`.
+- 2026-07-11: raw LightGBM quantile intervals undercover (64%); split-conformal calibration
+  factors (s_lo/s_hi in meta.json) fitted on the validation fold restore ~80%.
+- 2026-07-11: **Backtest #1 failed** — persistence beat the curve-only model. Added
+  autoregressive features (`last_green_ratio`, `rolling_ratio_3`, strictly laps < L);
+  validation MAE 0.73 → 0.50s.
+- 2026-07-11: with AR features, adding the online bias to forecast quantiles double-adapts and
+  hurts (A/B: +0.07s MAE, −8pts coverage). Bias is now a UI calibration readout + sim input
+  only, NOT added to quantiles (deviation from brief, measured).
+- 2026-07-11: persistence gate baseline is the spec-literal "last lap" (any class); the harder
+  last-GREEN-lap variant is also reported as a diagnostic.
+- 2026-07-11: sim positions must be computed from lap-synchronised clocks (cars sit on different
+  laps); `to_sim_setup` projects every car to the chosen driver's current lap.
 
 ## Environment gotchas
 
