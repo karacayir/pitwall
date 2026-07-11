@@ -398,6 +398,7 @@ def main() -> int:
                         "categorical_features": CATEGORICAL_FEATURES,
                         "quantiles": list(config.QUANTILES),
                         "vocab": info["vocab"],
+                        "calibration": info["calibration"],
                         "metrics": info["metrics"],
                         "trained_before": block_start,
                     }

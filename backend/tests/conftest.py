@@ -99,6 +99,7 @@ def tiny_model(monza, sao_paulo, tmp_path_factory):
                 "categorical_features": ["compound", "track_id", "driver_id", "team_id"],
                 "quantiles": list(config.QUANTILES),
                 "vocab": info["vocab"],
+                "calibration": info["calibration"],
                 "metrics": info["metrics"],
             }
         )

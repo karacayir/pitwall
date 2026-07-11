@@ -137,8 +137,28 @@ def train_quantile_models(
     )
     lo = boosters[0.1].predict(x_valid)
     hi = boosters[0.9].predict(x_valid)
-    metrics["valid_coverage_p10_p90"] = float(np.mean((y_valid >= lo) & (y_valid <= hi)))
-    return boosters, {"vocab": vocab, "metrics": metrics}
+    metrics["valid_coverage_raw"] = float(np.mean((y_valid >= lo) & (y_valid <= hi)))
+
+    # split-conformal calibration: LightGBM's quantile heads come out too
+    # narrow, so scale each half-width until the validation fold hits its
+    # nominal one-sided 90% coverage. Factors never narrow (>=1), capped at 5.
+    eps = 1e-4
+    tri = np.sort(np.column_stack([lo, p50, hi]), axis=1)
+    lo_s, p50_s, hi_s = tri[:, 0], tri[:, 1], tri[:, 2]
+    r_hi = (y_valid - p50_s) / np.maximum(hi_s - p50_s, eps)
+    r_lo = (p50_s - y_valid) / np.maximum(p50_s - lo_s, eps)
+    s_hi = float(np.clip(np.quantile(r_hi, 0.9), 1.0, 5.0))
+    s_lo = float(np.clip(np.quantile(r_lo, 0.9), 1.0, 5.0))
+    cal_lo = p50_s - s_lo * (p50_s - lo_s)
+    cal_hi = p50_s + s_hi * (hi_s - p50_s)
+    metrics["valid_coverage_p10_p90"] = float(np.mean((y_valid >= cal_lo) & (y_valid <= cal_hi)))
+    metrics["calibration_s_lo"] = s_lo
+    metrics["calibration_s_hi"] = s_hi
+    return boosters, {
+        "vocab": vocab,
+        "metrics": metrics,
+        "calibration": {"s_lo": s_lo, "s_hi": s_hi},
+    }
 
 
 def degradation_priors(train_df: pl.DataFrame) -> dict:
@@ -208,6 +228,7 @@ def main() -> int:
         "categorical_features": CATEGORICAL_FEATURES,
         "quantiles": list(config.QUANTILES),
         "vocab": info["vocab"],
+        "calibration": info["calibration"],
         "metrics": info["metrics"],
         "train_rows": len(train_df),
         "valid_rows": len(valid_df),

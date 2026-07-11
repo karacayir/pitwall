@@ -25,6 +25,9 @@ class PaceModel:
             )
         self.meta = meta
         self.vocab: dict[str, list] = meta["vocab"]
+        cal = meta.get("calibration") or {}
+        self.cal_lo: float = float(cal.get("s_lo", 1.0))
+        self.cal_hi: float = float(cal.get("s_hi", 1.0))
         self.boosters = {
             q: lgb.Booster(model_file=str(self.model_dir / f"q{int(q * 100)}.txt"))
             for q in config.QUANTILES
@@ -66,6 +69,9 @@ class PaceModel:
         x = self._to_pandas(features)
         preds = np.column_stack([self.boosters[q].predict(x) for q in config.QUANTILES])
         preds = np.sort(preds, axis=1)
+        # split-conformal widening fitted on the validation fold (meta.json)
+        preds[:, 0] = preds[:, 1] - self.cal_lo * (preds[:, 1] - preds[:, 0])
+        preds[:, 2] = preds[:, 1] + self.cal_hi * (preds[:, 2] - preds[:, 1])
         if age_groups is not None:
             groups = np.asarray(age_groups)
             for g in np.unique(groups):
