@@ -50,7 +50,11 @@ never brand as official F1.
       artifacts, degradation priors, online bias (readout only — see Decisions), monotonicity
       enforced at inference.
 - [x] **Phase 4 — Replay harness + backtest**: replay through the live engine; walk-forward
-      backtest with retrain-per-3-races; gates: see `reports/backtest_<date>.md`.
+      backtest over 57 held-out races (2024–2026, retrain-per-3): clean-air next-lap MAE
+      **0.489s**, +58.5% vs spec persistence (gate ≥20%), +10.6% vs rolling-median(5)
+      (gate ≥8%), coverage 73.4% (gate 80±7) — ALL GATES PASS
+      (`reports/backtest_2026-07-11.md`). Wet compounds remain the weak regime (1.58s MAE),
+      per the non-goals.
 - [x] **Phase 5 — Live service**: FastAPI WS `/ws/live` (+resume via `?since=`), REST incl.
       `/api/history` + `/api/simulate`; OpenF1 client (MQTT + REST fallback, `_id`/`_key`
       MessageLog) with mapper fixture-tested against real API samples.
