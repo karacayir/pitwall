@@ -1,0 +1,11 @@
+// Cloudflare Workers (static assets) config — the UI is a pure static export.
+// Deployed by Workers Builds: production branch -> pitwall.<account>.workers.dev,
+// other branches/PRs -> preview URLs.
+{
+  "name": "pitwall",
+  "compatibility_date": "2026-07-01",
+  "assets": {
+    "directory": "./out",
+    "not_found_handling": "404-page"
+  }
+}
