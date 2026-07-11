@@ -61,6 +61,7 @@ class DriverState:
     gap_ahead_s: float | None = None
     last_time_s: float | None = None  # cumulative race clock at last crossing
     compounds_used: set[str] = field(default_factory=set)
+    green_ratios: list[float] = field(default_factory=list)  # lap_time/ref of green laps
     pitted: bool = False  # pit_in seen on the most recent lap
     forecast: schemas.Forecast | None = None
     # (predicted_raw_p50_ratio, reference_used) for the next lap, for bias updates
@@ -202,6 +203,11 @@ class RaceEngine:
             self.bias.update(d.driver_number, float(row["lap_time_s"]) / ref_used, pred_ratio)
         d.pending = None
 
+        # autoregressive pace history (green laps only, ratio vs that lap's ref)
+        ref_of_lap = self._refs.get(lap_number)
+        if lap_class == "green" and row.get("lap_time_s") and ref_of_lap:
+            d.green_ratios.append(float(row["lap_time_s"]) / ref_of_lap)
+
         # degradation points on clean green laps
         ref_here = self._refs.get(lap_number)
         if (
@@ -285,6 +291,8 @@ class RaceEngine:
             "sc_restart": any(lap in self._sc_laps for lap in recent),
             "position": float(d.position) if d.position else None,
             "reference_pace_s": ref_next,
+            "last_green_ratio": d.green_ratios[-1] if d.green_ratios else None,
+            "rolling_ratio_3": float(np.median(d.green_ratios[-3:])) if d.green_ratios else None,
         }
 
     def _forecast_driver(self, d: DriverState) -> None:
@@ -313,8 +321,10 @@ class RaceEngine:
                 ]
             )
 
+        # k=1 (the next lap) uses ref(L+1) directly — it is already the last
+        # history entry — so the trend extrapolates k-1 laps beyond it
         refs_k = [
-            extrapolate_reference(self._ref_history, k, rain=self.raining)
+            extrapolate_reference(self._ref_history, k - 1, rain=self.raining)
             for k in range(1, config.FORECAST_AHEAD_LAPS + 1)
         ]
 
@@ -369,6 +379,7 @@ class RaceEngine:
                 schemas.DriverUpdate(
                     driver_number=d.driver_number,
                     driver_code=d.driver_code,
+                    team_id=d.team_id,
                     position=d.position,
                     gap_ahead_s=round(d.gap_ahead_s, 3) if d.gap_ahead_s is not None else None,
                     compound=d.compound,

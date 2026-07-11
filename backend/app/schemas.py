@@ -26,6 +26,7 @@ class WeatherInfo(BaseModel):
 class DriverUpdate(BaseModel):
     driver_number: int
     driver_code: str | None = None
+    team_id: str | None = None
     position: int | None = None
     gap_ahead_s: float | None = None
     compound: str | None = None

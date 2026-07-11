@@ -263,6 +263,10 @@ FEATURE_COLUMNS = [
     "sc_restart",
     "position",
     "reference_pace_s",
+    # autoregressive form (added after the first backtest: persistence beat the
+    # curve-only model — the GBM needs the driver's live pace, laps < L only)
+    "last_green_ratio",
+    "rolling_ratio_3",
 ]
 CATEGORICAL_FEATURES = ["compound", "track_id", "driver_id", "team_id"]
 TARGET_COLUMN = "y"
@@ -346,7 +350,40 @@ def build_feature_frame(
         (pl.col("tyre_age") ** 2).alias("tyre_age_sq"),
         (pl.col("lap_time_s") / pl.col("reference_s")).alias(TARGET_COLUMN),
     )
+    df = _with_recent_pace(df)
     return df.drop(["_gap_prev", "_pos_prev"])
+
+
+def _with_recent_pace(df: pl.DataFrame) -> pl.DataFrame:
+    """Autoregressive features: the driver's most recent green-lap ratio and
+    the median of their last 3, taken strictly from laps < L (asof on L-1)."""
+    greens = (
+        df.filter((pl.col("lap_class") == "green") & pl.col(TARGET_COLUMN).is_not_null())
+        .sort(["driver_number", "lap_number"])
+        .select(
+            "session_id",
+            "driver_number",
+            pl.col("lap_number").alias("_g_lap"),
+            pl.col(TARGET_COLUMN).alias("last_green_ratio"),
+            pl.col(TARGET_COLUMN)
+            .rolling_median(3, min_samples=1)
+            .over(["session_id", "driver_number"])
+            .alias("rolling_ratio_3"),
+        )
+    )
+    out = (
+        df.with_columns((pl.col("lap_number") - 1).alias("_prev_lap"))
+        .sort("_prev_lap")
+        .join_asof(
+            greens.sort("_g_lap"),
+            left_on="_prev_lap",
+            right_on="_g_lap",
+            by=["session_id", "driver_number"],
+            strategy="backward",
+        )
+        .drop(["_prev_lap", "_g_lap"])
+    )
+    return out
 
 
 def training_mask(df: pl.DataFrame) -> pl.Series:
