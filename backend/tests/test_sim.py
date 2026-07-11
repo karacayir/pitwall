@@ -135,7 +135,8 @@ def test_sanity_vs_fixture_race(monza, tiny_model):
             continue  # lapped car: its "finish" isn't comparable
         actual_duration = t_final - actual_t0[dn]
         setup = engine.to_sim_setup(dn)
-        finish, _ = run_strategy(setup, [], n_sims=1000, rng_seed=11)
+        finish, positions = run_strategy(setup, [], n_sims=1000, rng_seed=11)
+        assert positions.min() >= 1, "finish positions must be 1-based (sync-lap bug?)"
         assert abs(float(np.median(finish)) - actual_duration) < 20.0, (
             f"driver {dn}: sim {np.median(finish):.1f}s vs actual {actual_duration:.1f}s"
         )

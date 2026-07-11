@@ -106,10 +106,13 @@ def run_replay(
     Returns the number of lap updates emitted."""
     n_updates = 0
     prev_t: float | None = None
+    started = False  # fast-forward the pre-race dead air (weather-only feed)
     for t, kind, payload in event_stream(race_dir):
-        if speed > 0 and prev_t is not None and t > prev_t:
-            sleeper((t - prev_t) / speed)
-        prev_t = t
+        started = started or kind == "lap"
+        if started and speed > 0 and prev_t is not None and t > prev_t:
+            sleeper(min((t - prev_t) / speed, 60.0))
+        if started:
+            prev_t = t
         if kind == "weather":
             engine.on_weather(payload)
             continue

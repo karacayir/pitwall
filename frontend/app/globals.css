@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* Midnight pit wall tokens — see frontend spec in the brief */
+/* Midnight pit wall tokens — see frontend spec */
 :root {
   --bg: #0a0a0f;
   --surface: #12121a;
@@ -31,9 +31,51 @@
   --color-inter: var(--compound-inter);
   --color-wet: var(--compound-wet);
   --color-fastest: var(--fastest-lap);
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+  --font-mono: var(--font-mono);
 }
 
 body {
   background: var(--bg);
   color: var(--text);
+  font-family: var(--font-body), system-ui, sans-serif;
+}
+
+h1,
+h2,
+h3,
+.display {
+  font-family: var(--font-display), system-ui, sans-serif;
+}
+
+.timing,
+.mono {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.hairline {
+  border-color: var(--hairline);
+}
+
+@keyframes pulse-red {
+  0% {
+    box-shadow: 0 0 0 0 rgba(225, 6, 0, 0.55);
+  }
+  100% {
+    box-shadow: 0 0 0 12px rgba(225, 6, 0, 0);
+  }
+}
+.flag-pulse {
+  animation: pulse-red 0.9s ease-out 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

@@ -47,6 +47,7 @@ class Prediction:
     ahead5_p50: float | None
     stint_at_pred: int
     persistence: float | None
+    persistence_green: float | None
     rolling_median: float | None
     stint_linear: float | None
 
@@ -70,6 +71,7 @@ class _History:
     """Per-driver lap history for the baselines (uses laps <= L only)."""
 
     green_times: list[float] = field(default_factory=list)
+    all_times: list[float] = field(default_factory=list)
     stint_laps: list[tuple[int, float]] = field(default_factory=list)
     stint_no: int = 1
 
@@ -77,11 +79,18 @@ class _History:
         if stint != self.stint_no:
             self.stint_no = stint
             self.stint_laps = []
+        if lap_time_s is not None:
+            self.all_times.append(lap_time_s)
         if lap_class == "green" and lap_time_s is not None:
             self.green_times.append(lap_time_s)
             self.stint_laps.append((lap_number, lap_time_s))
 
     def persistence(self) -> float | None:
+        """Spec baseline: the driver's last completed lap, whatever it was."""
+        return self.all_times[-1] if self.all_times else None
+
+    def persistence_green(self) -> float | None:
+        """Harder diagnostic baseline: last GREEN lap."""
         return self.green_times[-1] if self.green_times else None
 
     def rolling_median(self, n: int = 5) -> float | None:
@@ -137,6 +146,7 @@ def evaluate_race(race_dir: Path, model: PaceModel, tracks: dict) -> RaceEval | 
                     "clean_air": enriched.clean_air,
                     "compound": d.compound,
                     "persistence": p.persistence,
+                    "persistence_green": p.persistence_green,
                     "rolling_median": p.rolling_median,
                     "stint_linear": p.stint_linear,
                 }
@@ -177,6 +187,7 @@ def evaluate_race(race_dir: Path, model: PaceModel, tracks: dict) -> RaceEval | 
                 ahead5_p50=None,
                 stint_at_pred=int(payload.get("stint") or 1),
                 persistence=h.persistence(),
+                persistence_green=h.persistence_green(),
                 rolling_median=h.rolling_median(),
                 stint_linear=h.stint_linear(lap + 1),
             )
@@ -185,7 +196,8 @@ def evaluate_race(race_dir: Path, model: PaceModel, tracks: dict) -> RaceEval | 
                 preds[(dn, -(lap + 5))] = Prediction(
                     driver=dn, target_lap=lap + 5, p10=0, p50=0, p90=0,
                     ahead5_p50=ahead[4], stint_at_pred=int(payload.get("stint") or 1),
-                    persistence=None, rolling_median=None, stint_linear=None,
+                    persistence=None, persistence_green=None,
+                    rolling_median=None, stint_linear=None,
                 )  # fmt: skip
 
     if not scored:
@@ -221,6 +233,7 @@ def aggregate(evals: list[RaceEval]) -> dict:
         "mae_green_next": mae(next_rows, "p50"),
         "mae_ahead5": mae(ahead_rows, "ahead5"),
         "mae_persistence": mae(clean, "persistence"),
+        "mae_persistence_green": mae(clean, "persistence_green"),
         "mae_rolling_median": mae(clean, "rolling_median"),
         "mae_stint_linear": mae(clean, "stint_linear"),
         "coverage": float(
@@ -301,7 +314,8 @@ def render_report(
         f"| 5-lap-ahead MAE | {agg['mae_ahead5']:.3f} s ({agg['n_ahead5']} laps) |"
         if agg["mae_ahead5"]
         else "| 5-lap-ahead MAE | n/a |",
-        f"| persistence baseline MAE | {agg['mae_persistence']:.3f} s |",
+        f"| persistence baseline MAE (spec: last lap) | {agg['mae_persistence']:.3f} s |",
+        f"| persistence, last GREEN lap (harder) | {agg['mae_persistence_green']:.3f} s |",
         f"| rolling-median(5) baseline MAE | {agg['mae_rolling_median']:.3f} s |",
         f"| stint-linear baseline MAE | {agg['mae_stint_linear']:.3f} s |",
         f"| [P10,P90] coverage | {agg['coverage'] * 100:.1f}% (target 80±7) |",

@@ -62,6 +62,7 @@ class DriverState:
     last_time_s: float | None = None  # cumulative race clock at last crossing
     compounds_used: set[str] = field(default_factory=set)
     green_ratios: list[float] = field(default_factory=list)  # lap_time/ref of green laps
+    lap_log: list[dict] = field(default_factory=list)  # for /api/history (late joiners)
     pitted: bool = False  # pit_in seen on the most recent lap
     forecast: schemas.Forecast | None = None
     # (predicted_raw_p50_ratio, reference_used) for the next lap, for bias updates
@@ -180,6 +181,18 @@ class RaceEngine:
         self.max_lap = max(self.max_lap, lap_number)
         # the reference is core state, model or not (also feeds degradation + UI)
         self.ref_for(min(lap_number + 1, self.meta.laps_total))
+
+        # per-driver lap log for late-joining clients (/api/history) + the sim
+        d.lap_log.append(
+            {
+                "lap": lap_number,
+                "time": row.get("lap_time_s"),
+                "compound": row.get("compound"),
+                "gap": round(gap, 3) if gap is not None else None,
+                "position": row.get("position"),
+                "t": float(t) if t is not None else None,  # crossing clock
+            }
+        )
 
         # driver state
         d.driver_code = row.get("driver_code") or d.driver_code
@@ -407,18 +420,32 @@ class RaceEngine:
         if chosen is None or chosen.last_time_s is None:
             raise ValueError(f"driver {driver_number} has no completed laps yet")
 
+        # Synchronise every car to the chosen driver's current lap: t0 is the
+        # clock at which the car crossed (or is projected to cross) lap L.
+        # Sorting mixed-lap "last crossing" clocks would rank backmarkers ahead.
+        sync_lap = chosen.lap_number
         cars = []
         for d in self.drivers.values():
             if d.last_time_s is None or d.compound is None:
                 continue
-            if abs(d.last_time_s - chosen.last_time_s) > config.SIM_RIVAL_WINDOW_S and (
+            t0 = None
+            for entry in reversed(d.lap_log):
+                if entry["lap"] == sync_lap and entry["t"] is not None:
+                    t0 = entry["t"]
+                    break
+            if t0 is None and d.lap_number == sync_lap - 1 and d.last_lap_s:
+                t0 = d.last_time_s + d.last_lap_s  # about to cross: project one lap
+            if t0 is None:
+                continue  # lapped cars: outside the ±40s story anyway
+            if (
                 d.driver_number != driver_number
+                and abs(t0 - (chosen.last_time_s or 0.0)) > config.SIM_RIVAL_WINDOW_S
             ):
                 continue
             cars.append(
                 CarSim(
                     driver_number=d.driver_number,
-                    t0=d.last_time_s,
+                    t0=t0,
                     compound=d.compound,
                     tyre_age=float((d.tyre_life or 1) - 1),
                     bias_ratio=self.bias.get(d.driver_number),

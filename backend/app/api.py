@@ -66,10 +66,13 @@ async def replay_task(runtime: SessionRuntime, race_dir: Path, speed: float) -> 
     """Async twin of ingest.replay.run_replay feeding the runtime."""
     log.info("replay starting: %s at %sx", race_dir.name, speed)
     prev_t: float | None = None
+    started = False  # fast-forward the pre-race dead air (weather-only feed)
     for t, kind, payload in event_stream(race_dir):
-        if speed > 0 and prev_t is not None and t > prev_t:
-            await asyncio.sleep((t - prev_t) / speed)
-        prev_t = t
+        started = started or kind == "lap"
+        if started and speed > 0 and prev_t is not None and t > prev_t:
+            await asyncio.sleep(min((t - prev_t) / speed, 60.0))
+        if started:
+            prev_t = t
         if kind == "weather":
             runtime.engine.on_weather(payload)
             continue
@@ -166,6 +169,12 @@ def create_app(
         if rt.latest is None:
             raise HTTPException(503, "no laps processed yet")
         return rt.latest
+
+    @app.get("/api/history")
+    async def lap_history():
+        """Per-driver lap series so late-joining clients can backfill charts."""
+        rt = runtime()
+        return {str(d.driver_number): d.lap_log for d in rt.engine.drivers.values()}
 
     @app.get("/api/predictions")
     async def predictions():
