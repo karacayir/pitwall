@@ -30,4 +30,5 @@ dev:
 	./scripts/dev.sh
 
 deploy:
-	@echo "Phase 8: fly deploy (backend) + Cloudflare Pages (frontend)" && exit 1
+	fly deploy
+	@echo "frontend: deploy via Cloudflare Pages / any Node host (see README)"

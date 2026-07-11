@@ -33,6 +33,13 @@ jobs:
           key: pitwall-data-${{ github.run_id }}
           restore-keys: pitwall-data-
 
+      - name: Restore last published MAE
+        uses: actions/cache@v4
+        with:
+          path: models/.published_mae
+          key: pitwall-published-mae-${{ github.run_id }}
+          restore-keys: pitwall-published-mae-
+
       - name: Pull current season (resumable; rate-limited to 500 calls/h)
         run: uv run python -m ingest.fastf1_pull --seasons $(date +%Y)
 
