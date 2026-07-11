@@ -25,7 +25,7 @@ export function CompoundFan({
     return (
       <div
         className="flex items-center justify-center rounded border border-(--hairline) bg-(--surface) text-xs text-(--muted)"
-        style={{ width, height }}
+        style={{ maxWidth: width, height }}
       >
         forecast warming up…
       </div>
@@ -72,7 +72,13 @@ export function CompoundFan({
   const ticks = [yMin + 0.4, (yMin + yMax) / 2, yMax - 0.4];
 
   return (
-    <svg width={width} height={height} className="block" role="img" aria-label="compound forecast fan">
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      className="block h-auto w-full"
+      style={{ maxWidth: width * 1.6 }}
+      role="img"
+      aria-label="compound forecast fan"
+    >
       {ticks.map((t) => (
         <g key={t}>
           <line x1={pad.l} x2={width - pad.r} y1={y(t)} y2={y(t)} stroke="var(--hairline)" strokeWidth="1" />
